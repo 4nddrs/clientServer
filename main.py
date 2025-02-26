@@ -84,17 +84,44 @@ class FirebaseApp(ctk.CTk):
             free_storage = round(free_storage, 2)
 
             # 🔹 Si el cliente está inactivo y no tiene logs, mostrar solo "No reporta"
-            if estado == "inactivo" : #and used_storage == 0
-                # Crear una tarjeta simple con mensaje "No reporta"
-                frame_cliente = ctk.CTkFrame(self.client_frame, height=150, width=250, corner_radius=15, fg_color="#061c31")
+            if estado == "inactivo" :
+                # 🔹 Crear tarjeta para cada cliente con información completa
+                frame_cliente = ctk.CTkFrame(self.client_frame, height=300, width=250, corner_radius=15, fg_color="#061c31")
                 frame_cliente.grid(row=fila, column=columna, padx=10, pady=10)
 
-                # Texto de "No reporta" con nombre en rojo
-                label_no_reporta = ctk.CTkLabel(frame_cliente, text="No reporta", font=("Arial", 16, "bold"), text_color="red")
-                label_no_reporta.pack(side="top", pady=6)
+                # 🔹 Cargar la imagen (asegúrate de que la ruta sea correcta)
+                image_path = "assets/Dic-Inactivo.png"
+                image = Image.open(image_path)
 
-                label_name = ctk.CTkLabel(frame_cliente, text=name, font=("Arial", 14, "bold"), text_color="red")
-                label_name.pack(side="top", pady=6)
+                # 🔹 Redimensionar la imagen a un tamaño más pequeño, por ejemplo, 150x150 píxeles
+                image_resized = image.resize((160, 160))  # Cambia el tamaño a lo que desees
+
+                # 🔹 Convertir la imagen redimensionada a un formato compatible con tkinter
+                image_tk = ImageTk.PhotoImage(image_resized)
+
+                # 🔹 Crear una etiqueta con la imagen encima del nombre
+                image_label = ctk.CTkLabel(frame_cliente, image=image_tk)
+                image_label.image = image_tk  # Guardamos la referencia de la imagen
+                image_label.pack(side="top", pady=6)
+
+                # 🔹 Nombre del cliente
+                label = ctk.CTkLabel(frame_cliente, text=name, font=("Arial", 18, "bold"), text_color="red")
+                label.pack(side="top", pady=6)
+
+                # 🔹 Mensaje "NO REPORTA" en rojo (antes de la info de almacenamiento)
+                label_no_reporta = ctk.CTkLabel(frame_cliente, text="NO REPORTA", font=("Arial", 16, "bold"), text_color="red")
+                label_no_reporta.pack(side="top", pady=(10, 90))  # Espaciado arriba y abajo
+
+                # 🔹 Barra de progreso con cambio de color dinámico (invisible pero visible y en gris)
+                progress = ctk.CTkProgressBar(frame_cliente, width=180)
+                usage_ratio = used_storage / total_storage if total_storage > 0 else 0
+                progress.set(usage_ratio)
+                progress.configure(progress_color="gray")  # Color gris
+                progress.set(0)  # O puedes ajustarlo al valor que desees, por ejemplo, `0`
+                progress.pack(side="top", padx=10, pady=10)
+
+
+
             else:
                 # 🔹 Crear tarjeta para cada cliente con información completa
                 frame_cliente = ctk.CTkFrame(self.client_frame, height=300, width=250, corner_radius=15, fg_color="#061c31")
@@ -154,7 +181,7 @@ class FirebaseApp(ctk.CTk):
 
             # Control de posición
             columna += 1
-            if columna > 3:
+            if columna > 4:
                 columna = 0
                 fila += 1
 
