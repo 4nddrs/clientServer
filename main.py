@@ -6,6 +6,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 from tkinter import PhotoImage
 from PIL import Image, ImageTk  
+import matplotlib.dates as mdates
+import datetime
+import matplotlib.colors as mcolors
 
 # 🔹 Inicializar Firebase
 cred = credentials.Certificate("key.json")  # Reemplaza con tu JSON de Firebase
@@ -132,6 +135,9 @@ class FirebaseApp(ctk.CTk):
             total_storage = sum(data.get("disks", {}).values())  # Total de almacenamiento
             used_storage = self.obtener_uso_cliente(mac)  # Almacenamiento usado
             free_storage = total_storage - used_storage  # Almacenamiento libre
+            ip_cliente = data.get("ip", "IP Desconocida") #IP Cliente
+
+            print(f"Cliente: {name}, MAC: {mac}, Estado: {estado}, IP: {ip_cliente}")
 
             # Redondear los valores a dos decimales
             total_storage = round(total_storage, 2)
@@ -256,10 +262,10 @@ class FirebaseApp(ctk.CTk):
         
         
         # Actualizar los valores de los labels después de obtener los datos
-        self.total_label.configure(text=f"Total: {self.total_disks} TB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
-        self.used_label.configure(text=f"Usado: {self.used_disks} GB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
-        self.free_label.configure(text=f"Libre: {self.free_disks} GB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
-        self.report_label.configure(text=f"Reportaron {clientes_activos} de {total_clientes}", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
+        self.total_label.configure(text=f"Total: {self.total_disks} TB", text_color="#feb90a", font=("Helvetica", 12, "bold"))
+        self.used_label.configure(text=f"Usado: {self.used_disks} GB", text_color="#feb90a", font=("Helvetica", 12, "bold"))
+        self.free_label.configure(text=f"Libre: {self.free_disks} GB", text_color="#feb90a", font=("Helvetica", 12, "bold"))
+        self.report_label.configure(text=f"Reportaron {clientes_activos} de {total_clientes}", text_color="#feb90a", font=("Helvetica", 12, "bold"))
 
         
         # Calcula el porcentaje de uso total
@@ -354,7 +360,73 @@ class FirebaseApp(ctk.CTk):
         card_histogram = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_histogram.grid(row=row, column=column, padx=5, pady=10)
 
-        
+        # Extraer datos para el histograma (fechas y almacenamiento utilizado)
+        storage_usage = []
+        report_dates = []
+
+        # Obtener los clientes de la colección 'client'
+        clientes_ref = db.collection("client").stream()
+
+        for cliente in clientes_ref:
+            data = cliente.to_dict()
+            mac = data.get("mac", "Desconocido")
+            
+            # Obtener todos los logs para el cliente con idClient igual a mac
+            logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.ASCENDING).stream()
+
+            for log in logs:
+                log_data = log.to_dict()
+                # Extraer el almacenamiento utilizado en ese log
+                storage_used = sum(log_data.get("disks", {}).values())  # Almacenamiento utilizado en ese log
+                storage_usage.append(storage_used)
+                
+                # Convertir la fecha a formato datetime
+                report_date = log_data.get("date", "Fecha desconocida")
+                if report_date != "Fecha desconocida":
+                    # Convertir la fecha de la marca de tiempo de Firestore a datetime
+                    report_dates.append(log_data.get("date").replace(tzinfo=None))  # Asegurarse de que esté en el formato adecuado
+                else:
+                    report_dates.append(datetime.datetime.now())  # Fecha por defecto si no existe
+
+        # 🔹 **Crear la figura para el histograma con tamaño más pequeño**
+        fig_hist, ax_hist = plt.subplots(figsize=(3.9, 3.5))  # Redimensiona el tamaño del gráfico (3.5x3.5)
+
+        # Definir los límites para la escala de colores (ajustar según el rango de tus datos)
+        min_storage = min(storage_usage)
+        max_storage = max(storage_usage)
+
+        # Usar un colormap para asignar colores según el valor de almacenamiento utilizado
+        colors = []
+        for storage in storage_usage:
+            # Usar un colormap de 'RdYlGn' (Red-Yellow-Green)
+            norm = mcolors.Normalize(vmin=min_storage, vmax=max_storage)
+            cmap = plt.cm.RdYlGn
+            color = cmap(norm(storage))  # Mapea el valor a un color
+            colors.append(color)
+
+        # Dibujar las barras con colores según el uso de almacenamiento
+        ax_hist.bar(report_dates, storage_usage, color=colors, alpha=0.7, width=0.5)
+
+        # Configurar formato de fecha en el eje X con el formato DD/MM/YYYY
+        ax_hist.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))  # Formato de fecha: DD/MM/YYYY
+        ax_hist.xaxis.set_major_locator(mdates.DayLocator(interval=1))  # Intervalo de un día (ajustable)
+
+        # Ajustar las etiquetas del eje X para que no se sobrepongan
+        plt.xticks(rotation=45, fontsize=8)  # Reducir el tamaño de la fuente de las etiquetas
+
+        # Agregar título y etiquetas
+        ax_hist.set_title("Uso de Almacenamiento por Fecha")
+        ax_hist.set_xlabel("Fecha")
+        ax_hist.set_ylabel("Almacenamiento Utilizado (MB)")
+
+        # Optimizar el ajuste del gráfico para que se vea mejor en el espacio disponible
+        plt.tight_layout()  # Ajusta automáticamente los márgenes
+
+        # 🔹 **Integrar el gráfico en la interfaz sin afectar el tamaño de la card**
+        canvas_hist = FigureCanvasTkAgg(fig_hist, master=card_histogram)
+        canvas_hist.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centrar el gráfico dentro de la card
+        canvas_hist.draw()
+                
 
         # 🔹 3: --Card para el gráfico de progreso
         card_progress = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")
