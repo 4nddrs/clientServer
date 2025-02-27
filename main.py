@@ -308,40 +308,8 @@ class FirebaseApp(ctk.CTk):
             self.used_progress.set(used_percentage)
             self.used_progress.pack(pady=5)
 
-        """Genera un gráfico de torta que representa el porcentaje de uso total de los discos."""
-        # BORRAR ESTO 
-        # 🔹 Calcular el porcentaje de uso
-        used_percentage = self.used_disks / self.total_disks
-        free_percentage = 1 - used_percentage
-
-        # 🔹 Determinar el color según el porcentaje de uso
-        if used_percentage <= 0.5:
-            color_used = "#00FF00"  # Verde (bajo uso)
-        elif used_percentage <= 0.75:
-            color_used = "#FFFF00"  # Amarillo (uso moderado)
-        elif used_percentage <= 0.9:
-            color_used = "#FFA500"  # Naranja (uso alto)
-        else:
-            color_used = "#FF0000"  # Rojo (uso crítico)
-
-        # 🔹 Crear una card para el gráfico de torta
-        card_storage_pie = ctk.CTkFrame(self.main_frame, width=400, height=250, corner_radius=10, fg_color="#061c31")
-        card_storage_pie.pack(pady=10)
-
-        # 🔹 Crear el gráfico de torta
-        fig, ax = plt.subplots(figsize=(4, 3))
-        labels = ["Usado", "Libre"]
-        sizes = [used_percentage, free_percentage]
-        colors = [color_used, "#66b3ff"]  # Azul para el espacio libre
-
-        ax.pie(sizes, labels=labels, autopct="%1.1f%%", colors=colors, startangle=90)
-        ax.set_title("Uso Total de Almacenamiento")
-
-        # 🔹 Agregar el gráfico de torta a la interfaz
-        canvas = FigureCanvasTkAgg(fig, master=card_storage_pie)
-        canvas.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centrar el gráfico
-        canvas.draw()
-        #--------------------------------
+        
+        #----------------------------------------------------------------------------------
 
         # Actualizar el tamaño del canvas cuando se agregan widgets
         self.client_frame.update_idletasks()
@@ -357,108 +325,69 @@ class FirebaseApp(ctk.CTk):
         return 0
 
     #-----------------------------------------------------------------------
+    
+
     def mostrar_re(self, mac):
-        # Crear nueva ventana
-        re_window = ctk.CTkToplevel(self)
-        re_window.title("Detalles de Almacenamiento")
-        re_window.geometry("1000x600")
+        # Almacenar la MAC como mac_id
+        mac_id = mac  # Usar la MAC como el ID del documento
+
+        # Obtener referencia a la base de datos Firestore
+        db = firestore.client()
+
+        # 1. Obtener las particiones de disco del cliente desde la colección 'clients'
+        cliente_doc = db.collection('client').document(mac_id).get()
+
+        # Verificar si el cliente existe
+        if not cliente_doc.exists:
+            print(f"Cliente no encontrado con MAC {mac_id}")
+            return  # Salir si no se encuentra el cliente
+
+        # Cliente encontrado, extraer los datos
+        cliente_data = cliente_doc.to_dict()
+        print(f"Datos del cliente encontrado: {cliente_data}")
+
+        # Obtener las particiones de disco del cliente (totales)
+        disks_data_total = cliente_data.get('disks', {})
+
+        # 2. Obtener los registros de logs de las particiones
+        logs_ref = db.collection('logs').where('idClient', '==', mac_id).stream()
+
+        # Diccionario para almacenar el uso de las particiones
+        disks_data_used = {disk: 0 for disk in disks_data_total.keys()}
+
+        # Recorrer los registros de logs y obtener los datos de uso de las particiones
+        for log in logs_ref:
+            log_data = log.to_dict()
+            log_disks = log_data.get('disks', {})
+
+            # Acumular el uso de cada partición desde los logs
+            for disk, used_storage in log_disks.items():
+                if disk in disks_data_used:
+                    disks_data_used[disk] += used_storage  # Acumular el uso de cada partición
+
+        # Preparar los datos para el gráfico de pastel
+        total_storage = list(disks_data_total.values())
+        used_storage = list(disks_data_used.values())
+
+        # Calcular el espacio libre y utilizado para cada partición
+        free_storage = [total - used for total, used in zip(total_storage, used_storage)]
+
+        # 3. Crear gráfico de pastel
+        labels = disks_data_total.keys()  # Etiquetas para las particiones (discos)
         
-        # Descripción de la ventana
-        description_label = ctk.CTkLabel(
-            re_window, 
-            text="Muestra los detalles de almacenamiento de un cliente, incluyendo gráficos de pastel por partición."
-        )
-        description_label.pack(pady=10)
+        # Datos para el gráfico (Usado y Libre)
+        sizes = used_storage + free_storage
+        labels = [f'{disk} Usado' for disk in disks_data_total.keys()] + [f'{disk} Libre' for disk in disks_data_total.keys()]
 
-        # Obtener datos desde Firebase
-        cliente = self.obtener_datos_cliente(mac)  # Datos del cliente
-        last_used_storage = self.obtener_uso_cliente(mac)  # Uso de almacenamiento desde logs
-        disks_data_total = cliente.get("disks", {})  # Total de almacenamiento por partición
+        # Colores para el gráfico de pastel
+        colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99'] * len(disks_data_total)
 
-        # Depuración: imprimir datos obtenidos
-        print("Datos de discos (total):", disks_data_total)
-        print("Datos de uso (último log):", last_used_storage)
-
-        if not disks_data_total:
-            print("No se encontraron datos de discos para este cliente.")
-            return
-
-        # Contenedor para gráficos de particiones
-        scrollable_frame = ctk.CTkFrame(re_window)
-        scrollable_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        row, column = 0, 0  # Control de posiciones en la UI
-
-        # Crear un gráfico de torta para cada partición
-        for disk, total_storage in disks_data_total.items():
-            used = last_used_storage.get(disk, 0)  # Uso actual de la partición
-            free = total_storage - used          # Espacio libre
-
-            # Depuración: imprimir datos por partición
-            print(f"Partición {disk}: Total={total_storage}, Usado={used}, Libre={free}")
-
-            # Card para el gráfico de la partición
-            card_another = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")
-            card_another.grid(row=row, column=column, padx=5, pady=5)
-
-            # Gráfico de torta para la partición
-            fig, ax = plt.subplots(figsize=(4, 3))
-            ax.pie(
-                [used, free],
-                labels=["Ocupado", "Libre"],
-                autopct="%1.1f%%",
-                colors=["#ff9999", "#66b3ff"],
-                startangle=90
-            )
-            ax.set_title(f"Distribución en Disco {disk}")
-
-            canvas = FigureCanvasTkAgg(fig, master=card_another)
-            canvas.get_tk_widget().pack(expand=True, fill="both")
-            canvas.draw()
-
-            column += 1
-            if column > 2:
-                column = 0
-                row += 1
-
-        # Calcular uso total a partir de los datos obtenidos
-        total_disk_value = sum(disks_data_total.values())
-        total_used_value = sum(last_used_storage.get(disk, 0) for disk in disks_data_total)
-        used_percentage = total_used_value / total_disk_value if total_disk_value > 0 else 0
-        free_percentage = 1 - used_percentage
-
-        print("Uso total:", total_used_value, "de", total_disk_value)
-        print("Porcentaje usado:", used_percentage)
-
-        # Determinar color según el porcentaje
-        if used_percentage <= 0.5:
-            color_used = "#00FF00"  # Verde
-        elif used_percentage <= 0.75:
-            color_used = "#FFFF00"  # Amarillo
-        elif used_percentage <= 0.9:
-            color_used = "#FFA500"  # Naranja
-        else:
-            color_used = "#FF0000"  # Rojo
-
-        # Crear una card para el gráfico de uso total
-        card_storage_pie = ctk.CTkFrame(re_window, width=400, height=250, corner_radius=10, fg_color="#061c31")
-        card_storage_pie.pack(pady=10)
-
-        fig2, ax2 = plt.subplots(figsize=(4, 3))
-        ax2.pie(
-            [used_percentage, free_percentage],
-            labels=["Usado", "Libre"],
-            autopct="%1.1f%%",
-            colors=[color_used, "#66b3ff"],
-            startangle=90
-        )
-        ax2.set_title("Uso Total de Almacenamiento")
-
-        canvas2 = FigureCanvasTkAgg(fig2, master=card_storage_pie)
-        canvas2.get_tk_widget().pack(expand=True, fill="both")
-        canvas2.draw()
-
-        re_window.update_idletasks()
+        # Crear gráfico de pastel
+        plt.figure(figsize=(7, 7))
+        plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=140)
+        plt.axis('equal')  # Para asegurar que el gráfico sea un círculo
+        plt.title(f"Uso de almacenamiento para {mac_id}")
+        plt.show()
 
 
     #-----------------------------------------------------------------------
