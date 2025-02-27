@@ -224,14 +224,24 @@ class FirebaseApp(ctk.CTk):
                 label.pack(side="top", pady=6)
 
                 # 🔹 Información del almacenamiento en filas
-                label_total = ctk.CTkLabel(frame_cliente, text=f"{total_storage} GB", font=("Arial", 10), text_color="white")
+                # 🔹 Información del almacenamiento en filas
+                label_total = ctk.CTkLabel(frame_cliente, text=f"{total_storage} GB", font=("Arial", 10), text_color="white", height=20)  # Ajusta el alto
                 label_total.pack(side="top", pady=0)  # Sin espacio entre filas
 
-                label_used = ctk.CTkLabel(frame_cliente, text=f"{used_storage} GB USO", font=("Arial", 10), text_color="white")
+                label_used = ctk.CTkLabel(frame_cliente, text=f"{used_storage} GB USO", font=("Arial", 10), text_color="white", height=20)  # Ajusta el alto
                 label_used.pack(side="top", pady=0)  # Sin espacio entre filas
 
-                label_free = ctk.CTkLabel(frame_cliente, text=f"{free_storage} GB LIBRE", font=("Arial", 10), text_color="white")
-                label_free.pack(side="top", pady=(0, 0))  # Sin espacio entre filas, o el mínimo
+                label_free = ctk.CTkLabel(frame_cliente, text=f"{free_storage} GB LIBRE", font=("Arial", 10), text_color="white", height=20)  # Ajusta el alto
+                label_free.pack(side="top", pady=0)  # Sin espacio entre filas
+
+                # 🔹 Información MAC e IP del cliente
+                label_mac = ctk.CTkLabel(frame_cliente, text=f"MAC: {mac}", font=("Arial", 10), text_color="white", height=20)  # Ajusta el alto
+                label_mac.pack(side="top", pady=0)  # Sin espacio entre filas
+
+                label_ip = ctk.CTkLabel(frame_cliente, text=f"IP: {ip_cliente}", font=("Arial", 10), text_color="white", height=20)  # Ajusta el alto
+                label_ip.pack(side="top", pady=0)  # Sin espacio entre filas
+
+
 
                 # 🔹 Barra de progreso con cambio de color dinámico
                 progress = ctk.CTkProgressBar(frame_cliente, width=180)
@@ -293,7 +303,7 @@ class FirebaseApp(ctk.CTk):
 
 
     def obtener_uso_cliente(self, mac):
-        """Obtiene el último uso de almacenamiento registrado para el cliente."""
+        """Obtiene el últ   imo uso de almacenamiento registrado para el cliente."""
         logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.DESCENDING).limit(1).stream()
         
         for log in logs:
@@ -339,7 +349,7 @@ class FirebaseApp(ctk.CTk):
         row = 0  # Contador de filas
         column = 0  # Contador de columnas
         
-        # 🔹 1: ----Card para el gráfico de torta
+        # 🔹 1: --> Card para el gráfico de torta
         card_pie_chart = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")  # Card de tamaño ajustado
         card_pie_chart.grid(row=row, column=column+1, padx=5, pady=10)
 
@@ -358,7 +368,7 @@ class FirebaseApp(ctk.CTk):
         canvas2.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centra el gráfico en el widget de la card
         canvas2.draw()
 
-        # 🔹 2: --Card para el gráfico de histograma
+        # 🔹 2: --> Card para el gráfico de histograma
         card_histogram = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_histogram.grid(row=row, column=column, padx=5, pady=10)
 
@@ -438,8 +448,12 @@ class FirebaseApp(ctk.CTk):
         card_progress = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")
         card_progress.grid(row=row, column=column+2, padx=5, pady=10)
 
+        # Título para el gráfico de progreso
+        title_label = ctk.CTkLabel(card_progress, text="Porcentaje de Disco Usado", fg_color=None, font=("Arial", 14, "bold"))
+        title_label.place(relx=0.5, rely=0.2, anchor="center")  # Posicionamos el título en la parte superior
+
         # Barra de progreso
-        progress = ctk.CTkProgressBar(card_progress, width=200)
+        progress = ctk.CTkProgressBar(card_progress, width=250)
         usage_ratio = last_used_storage / total_storage if total_storage > 0 else 0
         progress.set(usage_ratio)
         progress.configure(progress_color=self.get_progress_color(usage_ratio))  # Cambiar color dinámicamente
@@ -456,15 +470,135 @@ class FirebaseApp(ctk.CTk):
         row += 1
 
 
-        # 🔹 Card para el gráfico de tiempo
+        # 🔹 4 --> Card para el gráfico de tiempo
         card_time_graph = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_time_graph.grid(row=row, column=column, padx=5, pady=10)
 
-        # 🔹 Card para otra gráfica (si es necesario, puedes añadir más)
+        # Extraer datos para el gráfico de tiempo (fechas y almacenamiento utilizado)
+        storage_usage = []
+        report_dates = []
+
+        # Obtener los logs para el cliente con idClient igual a mac
+        logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.ASCENDING).stream()
+
+        for log in logs:
+            log_data = log.to_dict()
+            # Extraer el almacenamiento utilizado en ese log
+            storage_used = sum(log_data.get("disks", {}).values())  # Almacenamiento utilizado en ese log
+            storage_usage.append(storage_used)
+
+            # Convertir la fecha a formato datetime
+            report_date = log_data.get("date", "Fecha desconocida")
+            if report_date != "Fecha desconocida":
+                # Convertir la fecha de la marca de tiempo de Firestore a datetime
+                report_dates.append(log_data.get("date").replace(tzinfo=None))  # Asegurarse de que esté en el formato adecuado
+            else:
+                report_dates.append(datetime.datetime.now())  # Fecha por defecto si no existe
+
+        # Agrupar por fecha (sumar o promediar los valores de almacenamiento)
+        date_storage = defaultdict(list)
+        for date, storage in zip(report_dates, storage_usage):
+            date_storage[date.date()].append(storage)  # Guardar el almacenamiento por día
+
+        # Calcular el almacenamiento promedio por día
+        avg_storage_usage = []
+        dates = []
+        for date, storage_list in date_storage.items():
+            avg_storage_usage.append(np.mean(storage_list))  # Puedes cambiar a sum() si prefieres la suma diaria
+            dates.append(date)
+
+        # Crear la figura para el gráfico con puntos conectados por línea
+        fig_time, ax_time = plt.subplots(figsize=(3.9, 3.5))  # Redimensiona el tamaño del gráfico
+
+        # Definir los límites para la escala de colores (ajustar según el rango de tus datos)
+        min_storage = min(avg_storage_usage)
+        max_storage = max(avg_storage_usage)
+
+        # Usar un colormap para asignar colores según el valor de almacenamiento utilizado
+        colors = []
+        for storage in avg_storage_usage:
+            # Usar un colormap de 'RdYlGn' (Red-Yellow-Green)
+            norm = mcolors.Normalize(vmin=min_storage, vmax=max_storage)
+            cmap = plt.cm.RdYlGn
+            color = cmap(norm(storage))  # Mapea el valor a un color
+            colors.append(color)
+
+        # Conectar los puntos con una línea
+        ax_time.plot(dates, avg_storage_usage, color="blue", marker="o", markersize=6, linestyle='-', alpha=0.7)  # Conectar los puntos
+
+        # Configurar formato de fecha en el eje X con el formato DD/MM/YYYY
+        ax_time.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))  # Formato de fecha: DD/MM/YYYY
+        ax_time.xaxis.set_major_locator(mdates.DayLocator(interval=1))  # Intervalo de un día (ajustable)
+
+        # Ajustar las etiquetas del eje X para que no se sobrepongan
+        plt.xticks(rotation=45, fontsize=8)  # Reducir el tamaño de la fuente de las etiquetas
+
+        # Agregar título y etiquetas
+        ax_time.set_title("Uso de Almacenamiento por Fecha")
+        ax_time.set_xlabel("Fecha")
+        ax_time.set_ylabel("Almacenamiento Utilizado (MB)")
+
+        # Optimizar el ajuste del gráfico para que se vea mejor en el espacio disponible
+        plt.tight_layout()  # Ajusta automáticamente los márgenes
+
+        # Integrar el gráfico en la interfaz sin afectar el tamaño de la card
+        canvas_time = FigureCanvasTkAgg(fig_time, master=card_time_graph)
+        canvas_time.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centrar el gráfico dentro de la card
+        canvas_time.draw()
+
+
+        # Simulación de los datos de discos
+        disks_data_total = {
+            1: 893.62,  # Total de almacenamiento para partición 1
+            2: 931.51   # Total de almacenamiento para partición 2
+        }
+
+        disks_data_usage = {
+            1: 765.93,  # Uso de almacenamiento en partición 1
+            2: 556.69   # Uso de almacenamiento en partición 2
+        }
+        # 🔹 5--> Card para otra gráfica (Gráfico de torta)
         card_another = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_another.grid(row=row, column=column+1, padx=5, pady=10)
 
-        # 🔹 Card para otro gráfico más (si es necesario)
+        # Inicializar listas para los valores del gráfico
+        disks = []
+        storage_usage = []
+        remaining_space = []
+
+        # Si hay datos en 'disks', procesar y generar el gráfico
+        if disks_data_total:
+            for disk in disks_data_total:
+                # Almacenar el nombre del disco y el total
+                disks.append(f"Disco {disk}")
+                total = disks_data_total[disk]
+                usage = disks_data_usage.get(disk, 0)
+                storage_usage.append(usage)  # Uso del disco
+                remaining_space.append(total - usage)  # Espacio restante
+
+            # Crear la figura para el gráfico de torta
+            fig_pie, ax_pie = plt.subplots(figsize=(3.9, 3.5))  # Redimensionar para que quepa bien
+
+            # Crear el gráfico de torta
+            ax_pie.pie(storage_usage + remaining_space, labels=[f"{disk} Usado" for disk in disks] + 
+                    [f"{disk} Restante" for disk in disks], autopct='%1.1f%%', startangle=90, colors=plt.cm.Paired.colors[:len(disks)*2])
+
+            ax_pie.axis('equal')  # Asegura que el gráfico sea un círculo perfecto
+
+            # Agregar título
+            ax_pie.set_title("Uso de Almacenamiento por Partición de Disco")
+
+            # Integrar el gráfico en la interfaz sin afectar el tamaño de la card
+            canvas_pie = FigureCanvasTkAgg(fig_pie, master=card_another)
+            canvas_pie.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centrar el gráfico dentro de la card
+            canvas_pie.draw()
+        
+
+        
+
+        
+       
+        # 🔹 6 --> Card para otro gráfico más (si es necesario)
         card_more = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_more.grid(row=row, column=column+2, padx=5, pady=10)
 
