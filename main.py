@@ -21,6 +21,7 @@ db = firestore.client()
 ctk.set_appearance_mode("dark")  # Modo oscuro
 ctk.set_default_color_theme("blue")  # Tema azul
 
+macUpdate = "00:00:00:00:00:00"
 
 class FirebaseApp(ctk.CTk):
     def __init__(self):
@@ -292,15 +293,17 @@ class FirebaseApp(ctk.CTk):
         else:
             progress_color = "#FF0000"  
         # Crear barra de progreso para mostrar el uso total de todos los discos
-        self.used_progress = ctk.CTkProgressBar(self.main_frame, width=400, height=20, progress_color=progress_color)
-        self.used_progress.set(used_percentage)  # Establecer el valor del progreso como el porcentaje de uso
-        self.used_progress.pack(pady=5)
+        
+        if not hasattr(self, "used_progress"):
+            self.used_progress = ctk.CTkProgressBar(self.main_frame, width=400, height=20, progress_color=progress_color)
+            self.used_progress.set(used_percentage)
+            self.used_progress.pack(pady=5)
 
 
         # Actualizar el tamaño del canvas cuando se agregan widgets
         self.client_frame.update_idletasks()
         self.scroll_canvas.config(scrollregion=self.scroll_canvas.bbox("all"))
-
+        self.client_frame.after(30000, self.obtener_datos)  # Actualizar cada 10 segundos
 
     def obtener_uso_cliente(self, mac):
         """Obtiene el últ   imo uso de almacenamiento registrado para el cliente."""
@@ -311,44 +314,53 @@ class FirebaseApp(ctk.CTk):
         return 0
 
     def mostrar_detalles(self, mac):
+        
         """Muestra una nueva ventana con los detalles del cliente seleccionado."""
         cliente_doc = db.collection("client").document(mac).get()
+        macUpdate = mac
         if not cliente_doc.exists:
             print("Cliente no encontrado")
             return
 
         cliente = cliente_doc.to_dict()
         logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.ASCENDING).stream()
-        
+
         used_storage, dates = [], []
         for log in logs:
             log_data = log.to_dict()
+            print(log_data)
             used_storage.append(sum(log_data.get("disks", {}).values()))
             dates.append(log_data.get("date", "Desconocido"))
 
-        detalles = ctk.CTkToplevel(self)
-        detalles.title(f"Detalles de {cliente['name']}")
-        detalles.geometry("990x540")  # Ajustamos el tamaño de la ventana secundaria
+        # Si la ventana 'detalles' ya está creada, la actualizamos
+        if not hasattr(self, 'detalles'):
+            detalles = ctk.CTkToplevel(self)
+            detalles.title(f"Detalles de {cliente['name']}")
+            detalles.geometry("990x540")  # Ajustamos el tamaño de la ventana secundaria
+            detalles.configure(bg="#133c5c")
+            detalles.grab_set()
+            detalles.lift()
+            detalles.focus_force()
 
-        # Cambiamos solo el color de fondo de la ventana secundaria
-        detalles.configure(bg="#133c5c")
+            self.detalles = detalles  # Guardamos la referencia de la ventana
 
-        # Hacer que la ventana secundaria esté encima de la ventana principal
-        detalles.grab_set()  
-        detalles.lift()  
-        detalles.focus_force() 
+        # Limpiar contenido anterior
+        for widget in self.detalles.winfo_children():
+            widget.destroy()
 
         total_storage = sum(cliente.get("disks", {}).values())
         last_used_storage = used_storage[-1] if used_storage else 0
 
         # Crear un frame scrollable para contener las cards
-        scrollable_frame = ctk.CTkScrollableFrame(detalles, width=950, height=500 , fg_color="#133c5c")
+        scrollable_frame = ctk.CTkScrollableFrame(self.detalles, width=950, height=500 , fg_color="#133c5c")
         scrollable_frame.grid(row=0, column=0, padx=10, pady=10)
 
         # Organizar el contenido en filas de 3 gráficos cada una
-        row = 0  # Contador de filas
-        column = 0  # Contador de columnas
-        
+        row = 0
+        column = 0
+
+
+
         # 🔹 1: --> Card para el gráfico de torta
         card_pie_chart = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")  # Card de tamaño ajustado
         card_pie_chart.grid(row=row, column=column+1, padx=5, pady=10)
@@ -601,7 +613,7 @@ class FirebaseApp(ctk.CTk):
         # 🔹 6 --> Card para otro gráfico más (si es necesario)
         card_more = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10 , fg_color="#061c31")  # Card de tamaño ajustado
         card_more.grid(row=row, column=column+2, padx=5, pady=10)
-
+        self.after(30000, lambda: self.mostrar_detalles(macUpdate))
 
 
     def draw_gradient(self):
