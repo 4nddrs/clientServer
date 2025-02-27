@@ -37,8 +37,58 @@ class FirebaseApp(ctk.CTk):
         self.main_frame.place(relwidth=1, relheight=1)
 
         # 🔹 Título
-        self.label = ctk.CTkLabel(self.main_frame, text="Clientes en Firebase", font=("Arial", 20), text_color="white")
+        self.label = ctk.CTkLabel(self.main_frame, text="Clientes en Firebase", font=("Times New Roman", 30), text_color="white")
         self.label.pack(pady=10)
+
+
+
+        # 🔹 Información total de los discos (Total, Usado, Libre, Reportados)
+        self.total_disks = 0
+        self.used_disks = 0
+        self.free_disks = 0
+        self.reportados = 0
+        self.total_clients = 0
+
+        # 🔹 Mostrar el total, usado, libre y reportados debajo del título
+        # Crear un contenedor para la fila de los tres primeros labels
+        row_frame = ctk.CTkFrame(self.main_frame)
+        row_frame.pack(pady=10, anchor='w', padx=(30, 0))  # Usamos 'anchor="w"' para alinearlo a la izquierda y eliminamos el padding derecho
+
+        # Colocar los labels en la fila, usando side='left' para alinearlos horizontalmente
+        self.total_label = ctk.CTkLabel(row_frame, text=f"{self.total_disks:.2f}", font=("Arial", 14), text_color="white", anchor='w')
+        self.total_label.pack(side='left', padx=10)
+
+        self.used_label = ctk.CTkLabel(row_frame, text=f"{self.used_disks:.2f}", font=("Arial", 14), text_color="white", anchor='w')
+        self.used_label.pack(side='left', padx=10)
+
+        self.free_label = ctk.CTkLabel(row_frame, text=f"{self.free_disks:.2f}", font=("Arial", 14), text_color="white", anchor='w')
+        self.free_label.pack(side='left', padx=10)
+
+
+        # Crear un contenedor para el label "reportado"
+        report_frame = ctk.CTkFrame(self.main_frame)
+        report_frame.pack(pady=5, anchor='w', padx=(30, 0))
+
+        # Colocar el label "reportado" dentro del contenedor
+        self.report_label = ctk.CTkLabel(report_frame, text=f"Reportaron {self.reportados} de {self.total_clients}", font=("Arial", 14), text_color="white", anchor='w')
+        self.report_label.pack(pady=5, padx=15)
+
+
+
+
+        # Agregar el logo a la parte superior derecha
+        # Cargar la imagen del logo
+        logo_image = Image.open("assets/Logo.png")  # Cambia la ruta por la de tu logo
+        logo_image = logo_image.resize((200, 200))  # Redimensiona la imagen si es necesario
+        logo = ImageTk.PhotoImage(logo_image)
+
+        # Crear un Label para mostrar el logo
+        self.logo_label = ctk.CTkLabel(self.main_frame, image=logo)
+        self.logo_label.image = logo  # Necesario para mantener la referencia a la imagen
+        self.logo_label.place(x=1090, y=20) 
+
+        
+
 
         # 🔹 Contenedor de clientes con scroll
         self.scrollable_frame = ctk.CTkFrame(self.main_frame, fg_color="#133c5c")
@@ -61,13 +111,18 @@ class FirebaseApp(ctk.CTk):
         # 🔹 Cargar clientes
         self.obtener_datos()
 
+
+
     def obtener_datos(self):
+
         for widget in self.client_frame.winfo_children():
             widget.destroy()
 
         clientes_ref = db.collection("client").stream()
 
         fila, columna = 0, 0  # Control de posiciones
+        clientes_activos = 0  # Variable para contar los clientes activos
+        total_clientes = 0  # Variable para contar el total de clientes
 
         for cliente in clientes_ref:
             data = cliente.to_dict()
@@ -82,6 +137,22 @@ class FirebaseApp(ctk.CTk):
             total_storage = round(total_storage, 2)
             used_storage = round(used_storage, 2)
             free_storage = round(free_storage, 2)
+            
+            # Sumar al total general y redondear a 2 decimales
+            self.total_disks += total_storage
+            self.used_disks += used_storage
+            self.free_disks += free_storage
+
+            # Redondear a 2 decimales
+            self.total_disks = round(self.total_disks, 2)
+            self.used_disks = round(self.used_disks, 2)
+            self.free_disks = round(self.free_disks, 2)
+
+
+            # Contamos el cliente activo
+            total_clientes += 1
+            if estado.lower() == "activo":
+                clientes_activos += 1
 
             # 🔹 Si el cliente está inactivo y no tiene logs, mostrar solo "No reporta"
             if estado == "inactivo" :
@@ -119,8 +190,6 @@ class FirebaseApp(ctk.CTk):
                 progress.configure(progress_color="gray")  # Color gris
                 progress.set(0)  # O puedes ajustarlo al valor que desees, por ejemplo, `0`
                 progress.pack(side="top", padx=10, pady=10)
-
-
 
             else:
                 # 🔹 Crear tarjeta para cada cliente con información completa
@@ -184,10 +253,36 @@ class FirebaseApp(ctk.CTk):
             if columna > 4:
                 columna = 0
                 fila += 1
+        
+        
+        # Actualizar los valores de los labels después de obtener los datos
+        self.total_label.configure(text=f"Total: {self.total_disks} TB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
+        self.used_label.configure(text=f"Usado: {self.used_disks} GB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
+        self.free_label.configure(text=f"Libre: {self.free_disks} GB", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
+        self.report_label.configure(text=f"Reportaron {clientes_activos} de {total_clientes}", text_color="#d5b0e8", font=("Helvetica", 12, "bold"))
+
+        
+        # Calcula el porcentaje de uso total
+        used_percentage = self.used_disks / self.total_disks
+        # Determina el color de la barra de progreso basado en el porcentaje de uso
+        if used_percentage <= 0.5:
+            progress_color = "#00FF00"  
+        elif used_percentage <= 0.75:
+            progress_color = "#FFFF00"  
+        elif used_percentage <= 0.9:
+            progress_color = "#FFA500"  
+        else:
+            progress_color = "#FF0000"  
+        # Crear barra de progreso para mostrar el uso total de todos los discos
+        self.used_progress = ctk.CTkProgressBar(self.main_frame, width=400, height=20, progress_color=progress_color)
+        self.used_progress.set(used_percentage)  # Establecer el valor del progreso como el porcentaje de uso
+        self.used_progress.pack(pady=5)
+
 
         # Actualizar el tamaño del canvas cuando se agregan widgets
         self.client_frame.update_idletasks()
         self.scroll_canvas.config(scrollregion=self.scroll_canvas.bbox("all"))
+
 
     def obtener_uso_cliente(self, mac):
         """Obtiene el último uso de almacenamiento registrado para el cliente."""
