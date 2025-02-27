@@ -9,6 +9,8 @@ from PIL import Image, ImageTk
 import matplotlib.dates as mdates
 import datetime
 import matplotlib.colors as mcolors
+import numpy as np
+from sklearn.base import defaultdict
 
 # 🔹 Inicializar Firebase
 cred = credentials.Certificate("key.json")  # Reemplaza con tu JSON de Firebase
@@ -364,48 +366,53 @@ class FirebaseApp(ctk.CTk):
         storage_usage = []
         report_dates = []
 
-        # Obtener los clientes de la colección 'client'
-        clientes_ref = db.collection("client").stream()
+        # Obtener los logs para el cliente con idClient igual a mac
+        logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.ASCENDING).stream()
 
-        for cliente in clientes_ref:
-            data = cliente.to_dict()
-            mac = data.get("mac", "Desconocido")
-            
-            # Obtener todos los logs para el cliente con idClient igual a mac
-            logs = db.collection("log").where("idClient", "==", mac).order_by("date", direction=firestore.Query.ASCENDING).stream()
+        for log in logs:
+            log_data = log.to_dict()
+            # Extraer el almacenamiento utilizado en ese log
+            storage_used = sum(log_data.get("disks", {}).values())  # Almacenamiento utilizado en ese log
+            storage_usage.append(storage_used)
 
-            for log in logs:
-                log_data = log.to_dict()
-                # Extraer el almacenamiento utilizado en ese log
-                storage_used = sum(log_data.get("disks", {}).values())  # Almacenamiento utilizado en ese log
-                storage_usage.append(storage_used)
-                
-                # Convertir la fecha a formato datetime
-                report_date = log_data.get("date", "Fecha desconocida")
-                if report_date != "Fecha desconocida":
-                    # Convertir la fecha de la marca de tiempo de Firestore a datetime
-                    report_dates.append(log_data.get("date").replace(tzinfo=None))  # Asegurarse de que esté en el formato adecuado
-                else:
-                    report_dates.append(datetime.datetime.now())  # Fecha por defecto si no existe
+            # Convertir la fecha a formato datetime
+            report_date = log_data.get("date", "Fecha desconocida")
+            if report_date != "Fecha desconocida":
+                # Convertir la fecha de la marca de tiempo de Firestore a datetime
+                report_dates.append(log_data.get("date").replace(tzinfo=None))  # Asegurarse de que esté en el formato adecuado
+            else:
+                report_dates.append(datetime.datetime.now())  # Fecha por defecto si no existe
 
-        # 🔹 **Crear la figura para el histograma con tamaño más pequeño**
-        fig_hist, ax_hist = plt.subplots(figsize=(3.9, 3.5))  # Redimensiona el tamaño del gráfico (3.5x3.5)
+        # Agrupar por fecha (sumar o promediar los valores de almacenamiento)
+        date_storage = defaultdict(list)
+        for date, storage in zip(report_dates, storage_usage):
+            date_storage[date.date()].append(storage)  # Guardar el almacenamiento por día
+
+        # Calcular el almacenamiento promedio por día
+        avg_storage_usage = []
+        dates = []
+        for date, storage_list in date_storage.items():
+            avg_storage_usage.append(np.mean(storage_list))  # Puedes cambiar a sum() si prefieres la suma diaria
+            dates.append(date)
+
+        # Crear la figura para el histograma con tamaño ajustado
+        fig_hist, ax_hist = plt.subplots(figsize=(3.9, 3.5))  # Redimensiona el tamaño del gráfico
 
         # Definir los límites para la escala de colores (ajustar según el rango de tus datos)
-        min_storage = min(storage_usage)
-        max_storage = max(storage_usage)
+        min_storage = min(avg_storage_usage)
+        max_storage = max(avg_storage_usage)
 
         # Usar un colormap para asignar colores según el valor de almacenamiento utilizado
         colors = []
-        for storage in storage_usage:
+        for storage in avg_storage_usage:
             # Usar un colormap de 'RdYlGn' (Red-Yellow-Green)
             norm = mcolors.Normalize(vmin=min_storage, vmax=max_storage)
             cmap = plt.cm.RdYlGn
             color = cmap(norm(storage))  # Mapea el valor a un color
             colors.append(color)
 
-        # Dibujar las barras con colores según el uso de almacenamiento
-        ax_hist.bar(report_dates, storage_usage, color=colors, alpha=0.7, width=0.5)
+        # Asegurar que las barras no se solapen y ajustar el ancho de las barras
+        ax_hist.bar(dates, avg_storage_usage, color=colors, alpha=0.7, width=0.6)  # Ajusta el ancho de las barras
 
         # Configurar formato de fecha en el eje X con el formato DD/MM/YYYY
         ax_hist.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))  # Formato de fecha: DD/MM/YYYY
@@ -422,11 +429,10 @@ class FirebaseApp(ctk.CTk):
         # Optimizar el ajuste del gráfico para que se vea mejor en el espacio disponible
         plt.tight_layout()  # Ajusta automáticamente los márgenes
 
-        # 🔹 **Integrar el gráfico en la interfaz sin afectar el tamaño de la card**
+        # Integrar el gráfico en la interfaz sin afectar el tamaño de la card
         canvas_hist = FigureCanvasTkAgg(fig_hist, master=card_histogram)
         canvas_hist.get_tk_widget().place(relx=0.5, rely=0.5, anchor="center")  # Centrar el gráfico dentro de la card
         canvas_hist.draw()
-                
 
         # 🔹 3: --Card para el gráfico de progreso
         card_progress = ctk.CTkFrame(scrollable_frame, width=305, height=250, corner_radius=10, fg_color="#061c31")
